@@ -1,0 +1,4 @@
+﻿name: summarization
+version: 1.0.0
+content: |
+  Summarize the following text in 3 bullet points.

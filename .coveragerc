@@ -1,0 +1,6 @@
+﻿[run]
+source = promptops
+omit = tests/*
+
+[report]
+fail_under = 80
