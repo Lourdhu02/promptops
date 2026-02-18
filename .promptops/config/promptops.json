@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "project_name": "promptops",
+  "author": "BLour",
+  "default_branch": "main",
+  "auto_eval": true,
+  "eval_threshold": {
+    "accuracy": 0.85,
+    "hallucination": 0.85,
+    "relevance": 0.8
+  }
+}
