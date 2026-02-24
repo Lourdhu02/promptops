@@ -349,6 +349,126 @@ def rollback_command(steps: int = 1, force: bool = False):
     console.print("[yellow]🚧 Rollback command coming soon...[/yellow]")
 
 
+
+
+def deploy_command(environment: str, version_hash: Optional[str], author: Optional[str]):
+    """Deploy a prompt version to an environment"""
+    from promptops.core.versioning import SessionLocal, get_current_head, get_version_by_hash
+    from promptops.core.models import Deployment
+    from promptops.deploy.engine import DeploymentEngine
+    from datetime import datetime
+    
+    valid_envs = ["dev", "staging", "prod"]
+    if environment not in valid_envs:
+        console.print(f"[red]❌ Invalid environment: {environment}[/red]")
+        console.print(f"[dim]Valid options: {', '.join(valid_envs)}[/dim]")
+        raise typer.Exit(1)
+    
+    db = SessionLocal()
+    
+    try:
+        promptops_dir = Path.cwd() / ".promptops"
+        if promptops_dir.exists():
+            config_file = promptops_dir / "config" / "promptops.json"
+            with open(config_file) as f:
+                config = json.load(f)
+            author = author or config.get("author", "unknown")
+        else:
+            author = author or "unknown"
+        
+        if version_hash:
+            version = get_version_by_hash(db, version_hash)
+            if not version:
+                console.print(f"[red]❌ Version not found: {version_hash}[/red]")
+                raise typer.Exit(1)
+        else:
+            version = get_current_head(db)
+            if not version:
+                console.print("[red]❌ No versions found. Commit a prompt first.[/red]")
+                raise typer.Exit(1)
+        
+        if environment == "prod":
+            console.print(f"\n[yellow]⚠️  You are about to deploy to PRODUCTION[/yellow]")
+            console.print(f"[dim]Version: {version.hash[:8]}[/dim]")
+            console.print(f"[dim]Message: {version.prompt_metadata.get('commit_message', 'N/A')}[/dim]\n")
+            
+            if not typer.confirm("Continue?"):
+                console.print("[yellow]Deployment cancelled[/yellow]")
+                raise typer.Abort()
+        
+        with console.status(f"[cyan]Deploying to {environment}...[/cyan]"):
+            current = db.query(Deployment)\
+                .filter(Deployment.environment == environment)\
+                .filter(Deployment.is_active == True)\
+                .all()
+            
+            for dep in current:
+                dep.is_active = False
+            
+            deployment = Deployment(
+                version_id=version.id,
+                environment=environment,
+                deployed_by=author,
+                deployed_at=datetime.utcnow(),
+                is_active=True
+            )
+            
+            db.add(deployment)
+            db.commit()
+            db.refresh(deployment)
+            
+            engine = DeploymentEngine()
+            engine.invalidate_cache(environment)
+        
+        console.print()
+        console.print(Panel.fit(
+            f"[green]✅ Deployment Successful[/green]\n\n"
+            f"[cyan]Version:[/cyan] {version.hash[:8]}\n"
+            f"[cyan]Environment:[/cyan] {environment}\n"
+            f"[cyan]Deployed by:[/cyan] {author}\n"
+            f"[cyan]Time:[/cyan] {deployment.deployed_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"[dim]Apps can now fetch via: GET /prompts/{environment}/active[/dim]",
+            title="🚀 Deployed",
+            border_style="green"
+        ))
+        
+    except Exception as e:
+        console.print(f"\n[red]❌ Deployment failed: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+def serve_command(host: str, port: int, reload: bool):
+    """Start the FastAPI server"""
+    import uvicorn
+    
+    console.print()
+    console.print(Panel.fit(
+        f"[cyan]Starting PromptOps API Server[/cyan]\n\n"
+        f"[green]URL:[/green] http://{host}:{port}\n"
+        f"[green]Docs:[/green] http://{host}:{port}/docs\n"
+        f"[green]Health:[/green] http://{host}:{port}/health\n\n"
+        f"[dim]Press Ctrl+C to stop[/dim]",
+        title="🚀 PromptOps API",
+        border_style="cyan"
+    ))
+    console.print()
+    
+    try:
+        uvicorn.run(
+            "promptops.api.app:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="info"
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Server stopped[/yellow]")
+
+
 """
 Add this function to your commands.py file
 """
@@ -484,3 +604,4 @@ def eval_command(run: bool, version_hash: Optional[str], compare: bool, samples:
         raise typer.Exit(1)
     finally:
         db.close()
+

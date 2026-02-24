@@ -93,6 +93,25 @@ def diff(
     from promptops.cli.commands import diff_command
     diff_command(version_a, version_b)
 
+@app.command()
+def deploy(
+    environment: str = typer.Argument(..., help="Target environment (dev/staging/prod)"),
+    version: Optional[str] = typer.Option(None, "--version", help="Specific version hash"),
+    author: Optional[str] = typer.Option(None, "--author", help="Who is deploying"),
+):
+    """Deploy a prompt version to an environment"""
+    from promptops.cli.commands import deploy_command
+    deploy_command(environment, version, author)
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes"),
+):
+    """Start the PromptOps API server"""
+    from promptops.cli.commands import serve_command
+    serve_command(host, port, reload)
 
 @app.command()
 def status():
